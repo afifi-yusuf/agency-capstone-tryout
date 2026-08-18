@@ -1,0 +1,81 @@
+[project]
+name = "agency"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "openai",
+    "httpx",
+    "html2text",
+    "pymupdf",
+    "cloudpickle",
+    "boto3",
+    "botocore[crt]",
+    "aws_bedrock_token_generator",
+    "anthropic",
+    "podman>=5.8.0",
+    "textual>=8.2.7",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "websocket-client"
+]
+
+[project.optional-dependencies]
+profiler = [
+    "torch",
+    "nvidia-ml-py",
+]
+dev = [
+    "pytest",
+    "pytest-mock",
+    "pytest-timeout",
+    "pre-commit",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agency"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Deliberately just pyflakes (F): unused imports/variables, undefined names,
+# redefinitions -- real-bug detectors with no stylistic judgment calls.
+# pycodestyle (E) was tried and dropped for now: E402 (import not at top)
+# flags several intentional patterns (agent.py/agwebui/server.py define
+# module-level constants before their imports on purpose), and E501/E701/
+# E702/E741/E731 are pure style on a codebase that's never been linted --
+# ruff-format (below) already owns whitespace/line-wrapping. Widen this
+# deliberately later rather than fixing/suppressing a wall of pre-existing
+# style findings just to turn a rule on.
+#
+# S110/S112 (flake8-bandit try-except-pass/try-except-continue) added
+# deliberately narrow: catches an except body that does nothing at all (no
+# log, no re-raise) -- true silent swallowing, not the many legitimate
+# best-effort `except Exception as e: print(f"WARNING: {e}")` catches
+# elsewhere in this codebase, which still surface a message. 28 pre-existing
+# hits exist across the repo (agresources.py's GPU/memory-detection
+# fallback probing, a few agwebui/agllm/agterm/agschema spots, two test
+# files) -- like the pycodestyle rules above, this is not being retroactively
+# fixed wall-to-wall; pre-commit only lints changed files by default, so
+# this only blocks *new* silent-swallow patterns going forward.
+select = ["F", "S110", "S112"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+timeout = 120
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+filterwarnings = [
+    # ProcessPoolExecutor uses fork() on Linux. The deprecation warning fires
+    # once per worker process creation and is noise in test output — the fork
+    # is safe here because workers are short-lived and do no lock-protected work.
+    "ignore:This process.*multi-threaded.*fork:DeprecationWarning",
+]
