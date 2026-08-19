@@ -1,0 +1,76 @@
+{
+  "runs": {
+    "Sequential": [
+      {
+        "duration_s": 409.654669,
+        "throughput": 0.029293,
+        "task_mean_s": 45.78638777283322,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 41.007,
+        "memory_peak_mb": 505.438,
+        "ttft_ms": 667.193,
+        "llm_wait_s": 188.829227
+      },
+      {
+        "duration_s": 428.47733,
+        "throughput": 0.028006,
+        "task_mean_s": 48.876271298166635,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 40.282,
+        "memory_peak_mb": 518.363,
+        "ttft_ms": 651.768,
+        "llm_wait_s": 204.42157500000002
+      }
+    ],
+    "Parallel (2)": [
+      {
+        "duration_s": 323.83695400000005,
+        "throughput": 0.037056,
+        "task_mean_s": 55.531556674166495,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 52.972,
+        "memory_peak_mb": 539.699,
+        "ttft_ms": 750.494,
+        "llm_wait_s": 234.305453
+      },
+      {
+        "duration_s": 309.57067700000005,
+        "throughput": 0.038763,
+        "task_mean_s": 54.161107440666605,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 55.271,
+        "memory_peak_mb": 523.324,
+        "ttft_ms": 741.397,
+        "llm_wait_s": 227.008966
+      }
+    ]
+  },
+  "means": {
+    "Sequential": {
+      "duration_s": 419.0659995,
+      "throughput": 0.0286495,
+      "task_mean_s": 47.33132953549993,
+      "repair_rate": 1.0,
+      "cpu_average_percent": 40.644499999999994,
+      "memory_peak_mb": 511.9005,
+      "ttft_ms": 659.4805,
+      "llm_wait_s": 196.625401
+    },
+    "Parallel (2)": {
+      "duration_s": 316.7038155,
+      "throughput": 0.0379095,
+      "task_mean_s": 54.84633205741655,
+      "repair_rate": 1.0,
+      "cpu_average_percent": 54.1215,
+      "memory_peak_mb": 531.5115,
+      "ttft_ms": 745.9455,
+      "llm_wait_s": 230.6572095
+    }
+  },
+  "comparison": {
+    "wall_time_reduction_percent": 24.426267967845472,
+    "speedup": 1.3232110855323749,
+    "throughput_increase_percent": 32.32168100664932,
+    "task_latency_increase_percent": 15.877438042977715
+  }
+}

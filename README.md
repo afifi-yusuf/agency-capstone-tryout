@@ -4,6 +4,11 @@ A multi-agent framework with sandboxed execution, isolated filesystems, GPU acce
 
 Agents are non-blocking by default. `agent.run()` returns a pending `agdata` immediately; reading any field on it blocks until the result is ready. Each `run()` call executes in its own daemon thread so agents run concurrently without any shared pool to exhaust. Tool calls are offloaded to a process pool so CPU-bound work never blocks the main interpreter.
 
+## Capstone tryout workflow
+
+The profiled Mini-SWE plan→repair→verify workflow, reproducibility instructions,
+raw summaries, and results writeup are in [`capstone/`](capstone/README.md).
+
 ## Requirements
 
 - Python 3.12

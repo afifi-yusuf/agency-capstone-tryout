@@ -1,0 +1,42 @@
+{
+  "benchmark": "jkoppel/QuixBugs",
+  "revision": "4257f44b0ff1181dedaedee6a447e133219fcebf",
+  "tasks": [
+    {
+      "name": "bitcount",
+      "program": "python_programs/bitcount.py",
+      "test": "python_testcases/test_bitcount.py",
+      "category": "bit manipulation"
+    },
+    {
+      "name": "flatten",
+      "program": "python_programs/flatten.py",
+      "test": "python_testcases/test_flatten.py",
+      "category": "recursion and data structures"
+    },
+    {
+      "name": "gcd",
+      "program": "python_programs/gcd.py",
+      "test": "python_testcases/test_gcd.py",
+      "category": "arithmetic"
+    },
+    {
+      "name": "is_valid_parenthesization",
+      "program": "python_programs/is_valid_parenthesization.py",
+      "test": "python_testcases/test_is_valid_parenthesization.py",
+      "category": "state tracking"
+    },
+    {
+      "name": "levenshtein",
+      "program": "python_programs/levenshtein.py",
+      "test": "python_testcases/test_levenshtein.py",
+      "category": "dynamic programming"
+    },
+    {
+      "name": "mergesort",
+      "program": "python_programs/mergesort.py",
+      "test": "python_testcases/test_mergesort.py",
+      "category": "sorting"
+    }
+  ]
+}
