@@ -2,11 +2,68 @@
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 import pytest
 
 from agency.profiler import agprof
+
+
+def test_live_metrics_normalizes_cpu_memory_and_sandbox_pressure(monkeypatch):
+    now = time.perf_counter_ns()
+    monkeypatch.setattr(agprof, "_session", object())
+    monkeypatch.setattr(
+        agprof,
+        "_live_workload",
+        [
+            (now - 1_100_000_000, 1_000_000.0, 100.0),
+            (now - 100_000_000, 2_000_000.0, 256.0),
+        ],
+    )
+    monkeypatch.setattr(agprof, "_live_cpu_capacity", 2.0)
+    monkeypatch.setattr(agprof, "_live_memory_limit_mb", 1024.0)
+    monkeypatch.setattr(agprof, "_cg_registry", {"first": "/one", "second": "/two"})
+
+    metrics = agprof.live_metrics()
+
+    assert metrics is not None
+    assert metrics.cpu_core_percent == pytest.approx(100.0)
+    assert metrics.cpu_capacity_percent == pytest.approx(50.0)
+    assert metrics.memory_percent == pytest.approx(25.0)
+    assert metrics.active_sandboxes == 2
+
+
+def test_live_metrics_requires_active_fresh_samples(monkeypatch):
+    now = time.perf_counter_ns()
+    monkeypatch.setattr(agprof, "_session", None)
+    monkeypatch.setattr(
+        agprof,
+        "_live_workload",
+        [(now - 3_000_000_000, 0.0, 10.0), (now - 2_000_000_000, 1.0, 10.0)],
+    )
+    assert agprof.live_metrics() is None
+
+    monkeypatch.setattr(agprof, "_session", object())
+    assert agprof.live_metrics(max_age_s=0.5) is None
+
+
+def test_live_metrics_is_safe_for_concurrent_readers(monkeypatch):
+    now = time.perf_counter_ns()
+    monkeypatch.setattr(agprof, "_session", object())
+    monkeypatch.setattr(
+        agprof,
+        "_live_workload",
+        [(now - 1_000_000_000, 0.0, 10.0), (now, 500_000.0, 20.0)],
+    )
+    monkeypatch.setattr(agprof, "_live_cpu_capacity", 1.0)
+    monkeypatch.setattr(agprof, "_live_memory_limit_mb", None)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        snapshots = list(pool.map(lambda _: agprof.live_metrics(), range(64)))
+
+    assert all(snapshot is not None for snapshot in snapshots)
+    assert {snapshot.memory_mb for snapshot in snapshots if snapshot is not None} == {20.0}
 
 
 def test_complete_summary_includes_per_process_workload_and_gpu_metrics(monkeypatch):

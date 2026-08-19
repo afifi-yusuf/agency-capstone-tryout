@@ -6,7 +6,8 @@
       "name": "bitcount",
       "program": "python_programs/bitcount.py",
       "test": "python_testcases/test_bitcount.py",
-      "category": "bit manipulation"
+      "category": "bit manipulation",
+      "expected_baseline": "timeout"
     },
     {
       "name": "flatten",
@@ -37,6 +38,43 @@
       "program": "python_programs/mergesort.py",
       "test": "python_testcases/test_mergesort.py",
       "category": "sorting"
+    },
+    {
+      "name": "bucketsort",
+      "program": "python_programs/bucketsort.py",
+      "test": "python_testcases/test_bucketsort.py",
+      "category": "sorting"
+    },
+    {
+      "name": "find_first_in_sorted",
+      "program": "python_programs/find_first_in_sorted.py",
+      "test": "python_testcases/test_find_first_in_sorted.py",
+      "category": "binary search",
+      "expected_baseline": "timeout"
+    },
+    {
+      "name": "hanoi",
+      "program": "python_programs/hanoi.py",
+      "test": "python_testcases/test_hanoi.py",
+      "category": "recursion"
+    },
+    {
+      "name": "next_palindrome",
+      "program": "python_programs/next_palindrome.py",
+      "test": "python_testcases/test_next_palindrome.py",
+      "category": "digit manipulation"
+    },
+    {
+      "name": "powerset",
+      "program": "python_programs/powerset.py",
+      "test": "python_testcases/test_powerset.py",
+      "category": "combinatorics"
+    },
+    {
+      "name": "rpn_eval",
+      "program": "python_programs/rpn_eval.py",
+      "test": "python_testcases/test_rpn_eval.py",
+      "category": "parsing and stacks"
     }
   ]
 }

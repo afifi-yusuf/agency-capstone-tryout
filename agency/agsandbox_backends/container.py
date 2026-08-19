@@ -911,7 +911,11 @@ class _ContainerBackendBase(agsandbox_backend):
             cgroup_parent = agprof.container_cgroup_parent()
             if cgroup_parent is not None and self._runtime == "docker":
                 cgroup_flags = [f"--cgroup-parent={cgroup_parent}"]
-            network_mode = self._agconfig.get_static("agSandbox", "network_mode", None)
+            network_mode = (
+                self._agconfig.get_static("agSandbox", "network_mode", None)
+                if self._agconfig is not None
+                else None
+            )
             network_flags = [f"--network={network_mode}"] if network_mode else []
             self._acquire_runtime_slot()
             try:

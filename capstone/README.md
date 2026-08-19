@@ -2,7 +2,8 @@
 
 This workflow uses Agency to diagnose, repair, and independently verify real
 Python defects from the QuixBugs program-repair benchmark. It compares a
-sequential run with two-way agent fan-out and records Agency profiler traces.
+profile-guided adaptive scheduler with fixed concurrency levels of one, two,
+and four repair teams while recording Agency profiler traces.
 
 ## What is measured
 
@@ -11,11 +12,12 @@ sequential run with two-way agent fan-out and records Agency profiler traces.
 - Tool and sandbox operation latency
 - CPU, memory, and storage I/O
 - Container CLI contention (`sync:container`) under parallel fan-out
+- Live scaling decisions, target/actual concurrency, and their resource triggers
 
 The benchmark is pinned in `tasks.json`. Each task checkout excludes QuixBugs'
 correct implementations and Git history so the agent cannot retrieve the answer.
-The harness verifies that each task fails before the agent runs and passes
-afterward.
+The harness verifies that each task fails or times out exactly as declared
+before the agent runs, then passes afterward.
 
 ## EC2 prerequisites
 
@@ -23,8 +25,8 @@ The profiler requires Linux, cgroups v2, `/proc`, `systemd-run`, `setpriv`, and
 non-interactive sudo. The current `t3.medium` is CPU-only, so this experiment is
 an end-to-end bug-fix and concurrency workload, not a GPU workload.
 
-Use at least a 40 GB root volume. On a 4 GB instance, add swap and cap fan-out at
-two tasks:
+Use at least a 40 GB root volume. On a 4 GB instance, add swap; begin with a
+maximum fan-out of two and increase to four only after checking sampled memory:
 
 ```bash
 sudo fallocate -l 4G /swapfile
@@ -82,7 +84,7 @@ uv run python -m capstone.run_benchmark \
   --run-dir runs/smoke_gcd
 ```
 
-## Profile sequential and parallel runs
+## Profile fixed and adaptive runs
 
 Run from a clean shell for each profile. The profiler re-executes the command in
 a dedicated systemd cgroup.
@@ -97,20 +99,46 @@ uv run python -m capstone.run_benchmark \
 
 timeout --signal=TERM 20m env \
 AGENCY_PROFILE=1 AGENCY_PROFILE_SCOPE=process \
-AGENCY_PROFILE_DIR=runs/profile_parallel \
+AGENCY_PROFILE_DIR=runs/profile_fixed_2 \
 uv run python -m capstone.run_benchmark \
   --mode parallel \
   --parallelism 2 \
-  --run-dir runs/results_parallel
+  --run-dir runs/results_fixed_2
+
+timeout --signal=TERM 20m env \
+AGENCY_PROFILE=1 AGENCY_PROFILE_SCOPE=process \
+AGENCY_PROFILE_DIR=runs/profile_fixed_4 \
+uv run python -m capstone.run_benchmark \
+  --mode parallel \
+  --parallelism 4 \
+  --run-dir runs/results_fixed_4
+
+timeout --signal=TERM 20m env \
+AGENCY_PROFILE=1 AGENCY_PROFILE_SCOPE=process \
+AGENCY_PROFILE_DIR=runs/profile_adaptive \
+uv run python -m capstone.run_benchmark \
+  --mode adaptive \
+  --min-parallelism 1 \
+  --max-parallelism 4 \
+  --run-dir runs/results_adaptive
 ```
 
-Repeat both modes at least twice. The endpoint is shared and live, so latency is
-an uncontrolled variable; do not interpret one run as a deterministic speedup.
+Adaptive mode requires active process-scope profiling because its AIMD
+controller consumes `agprof.live_metrics()`. It adds one team after sustained
+spare CPU/memory capacity and halves the target after sustained pressure,
+latency regression, task failure, or stale telemetry. Active repairs are never
+cancelled; scale-down applies as they drain.
+
+Run every policy three times in the same order. The endpoint is shared and live,
+so latency is an uncontrolled variable; report confidence intervals rather than
+interpreting one run as a deterministic speedup.
 
 ## Artifacts
 
-Each result directory contains aggregate JSON/Markdown, task JSON, patches,
-agent logs, and isolated workspaces. Each profile directory contains:
+Each result directory contains aggregate JSON/Markdown, `scheduler_events.jsonl`,
+task JSON, patches, agent logs, and isolated workspaces. Every scheduler event
+records CPU/memory pressure, target and actual concurrency, queue depth, action,
+and reason. Each profile directory contains:
 
 - `summary.json`
 - `summary.md`

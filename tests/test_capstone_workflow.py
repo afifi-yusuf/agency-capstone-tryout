@@ -1,8 +1,10 @@
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
+import capstone.run_benchmark as benchmark_module
 from capstone.mini_swe import (
     RepairTask,
     load_manifest,
@@ -13,7 +15,7 @@ from capstone.mini_swe import (
     run_test,
     snapshot_protected_files,
 )
-from capstone.run_benchmark import aggregate_results, batches
+from capstone.run_benchmark import AdaptiveController, SchedulerConfig, aggregate_results
 
 
 def test_manifest_is_pinned_and_tasks_are_unique():
@@ -153,11 +155,7 @@ def test_run_test_reports_success_and_failure(tmp_path):
     assert result["returncode"] == 1
 
 
-def test_batches_and_aggregate_results():
-    assert batches([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
-    with pytest.raises(ValueError):
-        batches([1], 0)
-
+def test_aggregate_results():
     summary = aggregate_results(
         [
             {"success": True, "duration_s": 1.0},
@@ -168,3 +166,123 @@ def test_batches_and_aggregate_results():
     )
     assert summary["repair_rate"] == 0.5
     assert summary["task_duration_mean_s"] == 2.0
+
+
+def test_adaptive_controller_scales_up_then_down():
+    controller = AdaptiveController(
+        SchedulerConfig(
+            min_parallelism=1,
+            max_parallelism=4,
+            cooldown_s=0,
+            scale_up_streak=2,
+            pressure_streak=2,
+        )
+    )
+    healthy = SimpleNamespace(cpu_capacity_percent=20.0, memory_percent=30.0)
+    pressured = SimpleNamespace(cpu_capacity_percent=95.0, memory_percent=30.0)
+
+    assert (
+        controller.observe(now=0, metrics=healthy, completed_durations=[], task_failed=False).action
+        == "hold"
+    )
+    increased = controller.observe(
+        now=1, metrics=healthy, completed_durations=[], task_failed=False
+    )
+    assert (increased.action, increased.target) == ("scale_up", 2)
+
+    decreased = controller.observe(now=2, metrics=healthy, completed_durations=[], task_failed=True)
+    assert (decreased.action, decreased.target, decreased.reason) == (
+        "scale_down",
+        1,
+        "task failure",
+    )
+
+    controller.observe(now=3, metrics=healthy, completed_durations=[], task_failed=False)
+    controller.observe(now=4, metrics=healthy, completed_durations=[], task_failed=False)
+    controller.observe(now=5, metrics=pressured, completed_durations=[], task_failed=False)
+    decreased = controller.observe(
+        now=6, metrics=pressured, completed_durations=[], task_failed=False
+    )
+    assert (decreased.action, decreased.target) == ("scale_down", 1)
+
+
+def test_adaptive_scheduler_bounds_concurrency_and_persists_events(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    (source / "python_programs").mkdir(parents=True)
+    (source / "python_testcases").mkdir()
+    tasks = []
+    for index in range(3):
+        name = f"task{index}"
+        program = f"python_programs/{name}.py"
+        test = f"python_testcases/test_{name}.py"
+        (source / program).write_text("VALUE = False\n")
+        (source / test).write_text(
+            f"from python_programs.{name} import VALUE\n\ndef test_value():\n    assert VALUE\n"
+        )
+        tasks.append(RepairTask(name, program, test, "fixture"))
+
+    current = 0
+    peak = 0
+
+    class FakePending:
+        def __init__(self, task):
+            self.task = task
+            self.polls = 1
+
+        def is_pending(self):
+            self.polls -= 1
+            return self.polls >= 0
+
+        def to_dict(self):
+            nonlocal current
+            current -= 1
+            return {
+                "task": self.task.name,
+                "category": self.task.category,
+                "success": True,
+                "duration_s": 1.0,
+                "patch": "patch\n",
+                "error": "",
+            }
+
+    def fake_run_task(task, workspace, baseline):
+        nonlocal current, peak
+        current += 1
+        peak = max(peak, current)
+        return object(), FakePending(task)
+
+    metrics = SimpleNamespace(
+        sample_age_ms=1.0,
+        cpu_capacity_percent=20.0,
+        memory_mb=100.0,
+        memory_percent=10.0,
+        active_sandboxes=1,
+    )
+    monkeypatch.setattr(benchmark_module, "_run_task", fake_run_task)
+    monkeypatch.setattr(benchmark_module, "agsync", lambda team: None)
+
+    results, summary = benchmark_module.run_benchmark(
+        tasks,
+        source,
+        tmp_path / "run",
+        mode="adaptive",
+        parallelism=2,
+        scheduler_config=SchedulerConfig(
+            min_parallelism=1,
+            max_parallelism=2,
+            poll_interval_s=0.001,
+            cooldown_s=0,
+            scale_up_streak=2,
+        ),
+        telemetry_provider=lambda: metrics,
+        sleep=lambda _: None,
+    )
+
+    assert len(results) == 3
+    assert peak == 2
+    assert summary["scheduler"]["peak_concurrency"] == 2
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "run" / "scheduler_events.jsonl").read_text().splitlines()
+    ]
+    assert any(event["action"] == "scale_up" for event in events)

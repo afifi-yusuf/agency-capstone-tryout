@@ -12,8 +12,10 @@ Import styles supported:
 
 from . import agprof
 from .agprof import (
+    LiveMetrics,
     annotate,
     enabled,
+    live_metrics,
     next_index,
     profile_scope,
     session,
@@ -28,8 +30,10 @@ from .agprof import (
 
 __all__ = [
     "agprof",
+    "LiveMetrics",
     "annotate",
     "enabled",
+    "live_metrics",
     "next_index",
     "profile_scope",
     "session",

@@ -34,6 +34,8 @@ class RepairTask:
     program: str
     test: str
     category: str
+    expected_baseline: str = "failure"
+    baseline_timeout_s: int = 10
 
     @property
     def test_command(self) -> str:
@@ -137,6 +139,12 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> tuple[str, list[RepairTask]]
     for task in tasks:
         if not SAFE_TASK_NAME.fullmatch(task.name):
             raise ValueError(f"task name must be a safe path component: {task.name!r}")
+        if task.expected_baseline not in {"failure", "timeout"}:
+            raise ValueError(
+                f"task {task.name!r} has invalid expected baseline: {task.expected_baseline!r}"
+            )
+        if task.baseline_timeout_s < 1:
+            raise ValueError(f"task {task.name!r} baseline timeout must be positive")
         for relative in (task.program, task.test):
             candidate = Path(relative)
             if candidate.is_absolute() or ".." in candidate.parts:

@@ -49,6 +49,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager, nullcontext, suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -78,6 +79,10 @@ _tls = threading.local()
 _samples: "list[tuple[int, str, float]]" = []  # (t_mono_ns, series, value)
 _process_info: "dict[str, dict]" = {}  # pid-start_ticks identity -> trace/display metadata
 _sampler: "_Sampler | None" = None
+_live_lock = threading.Lock()
+_live_workload: "list[tuple[int, float, float]]" = []  # (time, cpu_us, memory_mb)
+_live_cpu_capacity = 1.0
+_live_memory_limit_mb: "float | None" = None
 _leases_open: "dict[int, tuple[int, str]]" = {}  # gpu_id -> (t0_ns, label)
 _leases: "list[tuple[int, int, int, str]]" = []  # (gpu_id, t0_ns, t1_ns, label)
 _leases_lock = threading.Lock()
@@ -352,6 +357,62 @@ def enabled() -> bool:
     return _session is not None
 
 
+@dataclass(frozen=True)
+class LiveMetrics:
+    """Latest workload pressure snapshot from the active resource sampler."""
+
+    sampled_at_ns: int
+    sample_age_ms: float
+    cpu_core_percent: float
+    cpu_capacity_percent: float
+    cpu_capacity_cores: float
+    memory_mb: float
+    memory_limit_mb: "float | None"
+    memory_percent: "float | None"
+    active_sandboxes: int
+
+
+def live_metrics(*, max_age_s: float = 2.0) -> "LiveMetrics | None":
+    """Return normalized live workload pressure, or ``None`` if unavailable.
+
+    ``cpu_core_percent`` follows the profiler summary convention where one
+    fully occupied core is 100%. ``cpu_capacity_percent`` normalizes that value
+    to the CPU capacity available to the profiling cgroup and is therefore
+    bounded to 0–100% under normal accounting.
+    """
+    if _session is None:
+        return None
+    now = time.perf_counter_ns()
+    with _live_lock:
+        if len(_live_workload) < 2:
+            return None
+        previous, current = _live_workload[-2:]
+        capacity = max(_live_cpu_capacity, 0.001)
+        memory_limit = _live_memory_limit_mb
+    elapsed_s = (current[0] - previous[0]) / 1e9
+    cpu_delta_s = (current[1] - previous[1]) / 1e6
+    age_s = (now - current[0]) / 1e9
+    if elapsed_s <= 0 or cpu_delta_s < 0 or age_s < 0 or age_s > max_age_s:
+        return None
+    core_percent = 100.0 * cpu_delta_s / elapsed_s
+    memory_percent = (
+        100.0 * current[2] / memory_limit if memory_limit is not None and memory_limit > 0 else None
+    )
+    with _cg_lock:
+        active_sandboxes = len(_cg_registry)
+    return LiveMetrics(
+        sampled_at_ns=current[0],
+        sample_age_ms=age_s * 1000.0,
+        cpu_core_percent=core_percent,
+        cpu_capacity_percent=min(100.0, max(0.0, core_percent / capacity)),
+        cpu_capacity_cores=capacity,
+        memory_mb=current[2],
+        memory_limit_mb=memory_limit,
+        memory_percent=memory_percent,
+        active_sandboxes=active_sandboxes,
+    )
+
+
 def span(name: str):
     """A timed, named interval on the current thread.
 
@@ -458,6 +519,9 @@ class _Sampler(threading.Thread):
                 self._nvml = None
         self._process_cgroup = _process_cgroup_dir()
         self._proc_root = Path("/proc")
+        global _live_cpu_capacity, _live_memory_limit_mb
+        _live_cpu_capacity = self._cpu_capacity()
+        _live_memory_limit_mb = self._memory_limit_mb()
         self._clock_ticks = os.sysconf("SC_CLK_TCK")
         self._page_mb = os.sysconf("SC_PAGE_SIZE") / 2**20
         # Containers are sampled from the registry the sandbox backends fill
@@ -465,6 +529,32 @@ class _Sampler(threading.Thread):
         # discovery, no runtime naming assumptions.
         self._pid_labels: "dict[int, str]" = {}  # pid -> label (container or comm)
         self._proc_util_last: "dict[int, int]" = {}  # gpu idx -> last NVML sample ts
+
+    def _cpu_capacity(self) -> float:
+        """CPU cores available to the workload cgroup."""
+        try:
+            quota, period = (self._process_cgroup / "cpu.max").read_text().split()[:2]
+            if quota != "max":
+                return max(float(quota) / float(period), 0.001)
+        except (OSError, ValueError, ZeroDivisionError):
+            pass
+        return float(os.cpu_count() or 1)
+
+    def _memory_limit_mb(self) -> "float | None":
+        """Memory available to the workload, falling back to host memory."""
+        try:
+            raw = (self._process_cgroup / "memory.max").read_text().strip()
+            if raw != "max":
+                return int(raw) / 2**20
+        except (OSError, ValueError):
+            pass
+        try:
+            for line in (self._proc_root / "meminfo").read_text().splitlines():
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / 1024.0
+        except (OSError, ValueError, IndexError):
+            pass
+        return None
 
     def _workload_pids(self) -> "dict[int, str]":
         """Return every PID in the workload cgroup tree and its cgroup path.
@@ -756,10 +846,15 @@ class _Sampler(threading.Thread):
                 for line in f:
                     key, value = line.split()[:2]
                     cpu_fields[key] = int(value)
-            _samples.append((t, "workload:cpu_us", float(cpu_fields[b"usage_usec"])))
+            cpu_us = float(cpu_fields[b"usage_usec"])
+            _samples.append((t, "workload:cpu_us", cpu_us))
 
             with (self._process_cgroup / "memory.current").open("rb") as f:
-                _samples.append((t, "workload:memory_mb", int(f.read()) / 2**20))
+                memory_mb = int(f.read()) / 2**20
+                _samples.append((t, "workload:memory_mb", memory_mb))
+            with _live_lock:
+                _live_workload.append((t, cpu_us, memory_mb))
+                del _live_workload[:-2]
 
             io_r = io_w = 0
             with (self._process_cgroup / "io.stat").open("rb") as f:
@@ -861,6 +956,8 @@ def start(
         with _open_spans_lock:
             _open_spans.clear()
         _samples.clear()
+        with _live_lock:
+            _live_workload.clear()
         _process_info.clear()
         _leases.clear()
         _leases_open.clear()

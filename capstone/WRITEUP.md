@@ -1,20 +1,22 @@
-# Agency Mini-SWE: Profiled Program Repair
+# Agency Mini-SWE: Profile-Guided Dynamic Agent Scaling
 
 ## Summary
 
-This project implements an end-to-end bug-fix loop in Agency. A read-only
-planning agent diagnoses a failing QuixBugs program, a build agent repairs it in
-the same isolated sandbox, and an independent harness reruns the original test
-to determine success. The experiment compares sequential execution with
-two-task parallel fan-out.
+This project implements a profile-guided autoscaler for an end-to-end Agency
+bug-fix loop. A read-only planning agent diagnoses a failing QuixBugs program, a
+build agent repairs it in the same isolated sandbox, and an independent harness
+reruns pristine tests. A new live `agprof` API feeds CPU and memory pressure to
+an additive-increase/multiplicative-decrease scheduler, which changes the
+number of concurrent repair teams while the benchmark is running.
 
 ## Dataset
 
 QuixBugs is an academic automated-program-repair benchmark containing 40 short
-Python and Java programs with real defects and tests. This experiment uses six
-non-graph Python tasks spanning arithmetic, recursion, state tracking, dynamic
-programming, sorting, and bit manipulation. The exact upstream revision and
-task paths are recorded in `tasks.json`.
+Python and Java programs with real defects and tests. This experiment uses
+twelve Python tasks spanning arithmetic, recursion, search, parsing, state
+tracking, dynamic programming, sorting, combinatorics, and bit manipulation.
+The exact upstream revision, expected baseline behavior, and task paths are
+recorded in `tasks.json`.
 
 To prevent answer leakage, each task receives a fresh checkout without:
 
@@ -36,7 +38,9 @@ local read/edit/pytest operations and did not alter protected files.
 3. Ask `agplan` to inspect the program and tests and produce a diagnosis.
 4. Pass the diagnosis to `agbuild` in the same sandbox.
 5. Independently rerun pytest and save the resulting patch.
-6. Aggregate repair outcomes and Agency profiler statistics.
+6. Poll live profiler pressure and task completions, then adjust the target
+   number of in-flight teams without cancelling active repairs.
+7. Persist every scheduling decision and aggregate repair and profiler metrics.
 
 ## Experimental setup
 
@@ -44,72 +48,85 @@ local read/edit/pytest operations and did not alter protected files.
 - Sandbox runtime: Docker, CPU-only Agency image
 - LLM: supplied remote vLLM endpoint
 - Model: `Qwen/Qwen3.5-122B-A10B-FP8`
-- Parallelism: 1 (sequential) versus 2 (parallel)
-- Repetitions: 2 complete profiled runs per mode
-- Total evaluated repairs: 24 (6 tasks × 2 modes × 2 repetitions)
+- Policies: fixed concurrency 1, 2, and 4; adaptive concurrency 1–4
+- Repetitions: 3 complete profiled runs per policy
+- Total evaluated repairs: 144 (12 tasks × 4 policies × 3 repetitions)
 
 The live endpoint is shared, so model latency is not controlled. Repeated runs
 and profiler decomposition are used to distinguish endpoint wait from local
 CPU, I/O, sandbox, and scheduling overhead.
 
+## Adaptive policy
+
+`agprof.live_metrics()` converts consecutive cgroup samples into an immutable
+snapshot of CPU capacity usage, memory pressure, sample age, and active
+sandboxes. The scheduler starts one repair team, adds one slot after three
+healthy samples, and applies a cooldown between changes. Sustained CPU or
+memory pressure halves the target; a task failure or large completed-task
+latency regression triggers the same reduction immediately. Scale-down never
+cancels a repair already in progress.
+
+Every one-second decision is written to `scheduler_events.jsonl`, including the
+input telemetry, queue depth, target and actual concurrency, action, and reason.
+Fixed policies use the same sliding-window scheduler and artifact format, so
+their only intentional difference is the concurrency policy.
+
 ## Results
 
-All 24 repair attempts passed their original tests after the agent's patch. The
-sequential runs took 409.7 s and 428.5 s; the two-agent runs took 323.8 s and
-309.6 s.
+All **144/144 repair attempts** passed their original tests after the agent's
+patch. Mean profiled wall time was:
 
-Across repetitions:
+- **708.5 s** at fixed concurrency 1
+- **416.7 s** at fixed concurrency 2
+- **304.8 s** at fixed concurrency 4
+- **313.1 s** with adaptive concurrency 1–4
 
-- Mean profiled wall time fell from **419.1 s to 316.7 s**, a **24.4% reduction**
-  and **1.32× speedup**.
-- Successful skill-run throughput increased from **0.0286/s to 0.0379/s**
-  (**32.3%**).
-- Mean per-task latency increased from **47.3 s to 54.8 s** (**15.9%**). Fan-out
-  improved batch completion time while individual tasks experienced more host
-  and endpoint contention.
-- Repair quality remained unchanged at **100% (12/12) per mode**.
+Adaptive scheduling delivered a **2.26× speedup** and **55.8% wall-time
+reduction** over fixed concurrency 1. Successful-repair throughput increased
+from **0.0171/s to 0.0391/s**. It was **2.7% slower than fixed 4** on mean wall
+time, so the experiment does not claim that adaptation beats an oracle-like
+fixed setting chosen after measurement. Instead, it approached that setting
+without assuming it in advance and reduced mean peak memory from **709.7 MB to
+634.8 MB**.
 
-![Sequential and parallel profile comparison](artifacts/profile_comparison.png)
+![Fixed and adaptive profile comparison](artifacts/profile_comparison.png)
 
-The dots are individual runs and bars are two-run means. Machine-readable
-aggregates are in [`artifacts/aggregate.json`](artifacts/aggregate.json); each
-run also includes task-level outputs, patches, and the complete profiler
-summary.
+The dots are individual runs, bars are three-run means, and error bars are 95%
+confidence intervals. Machine-readable aggregates are in
+[`artifacts/aggregate.json`](artifacts/aggregate.json).
 
 ## Profile findings
 
-The profile explains why two-way fan-out helped batch throughput but increased
-individual latency:
+The profiles explain the throughput/latency tradeoff:
 
-- Average host CPU utilization rose from **40.6% to 54.1%**, while peak sampled
-  memory increased only from **511.9 MB to 531.5 MB**. Parallelism used the
-  small EC2 host more effectively without approaching its memory limit.
-- Mean LLM time to first token rose from **659 ms to 746 ms**. Total LLM wait
-  averaged 196.6 s sequentially and 230.7 s in parallel, consistent with
-  concurrent requests sharing the remote endpoint.
-- Docker CLI admission was not the bottleneck: `sync:container` p95 was roughly
-  0.20 ms sequentially and 0.25 ms in parallel.
-- Container and mounted-file overhead did increase. Mean total `sandbox:start`
-  time was 11.1 s per sequential run versus 12.9 s per parallel run; read-file
-  p95 increased from about 375 ms to 522 ms.
-- Explicit `agsync:join` blocked for a mean total of 283.4 s sequentially and
-  180.4 s in parallel. This is expected waiting rather than CPU work and is the
-  clearest profile-level view of the fan-out benefit.
+- Mean workload CPU rose from **15.3 core-percent** at fixed 1 to **37.7** at
+  fixed 4 and **36.5** adaptively. Much of the workflow waits on the remote
+  model, so four teams still did not saturate the two-vCPU host.
+- Mean task latency rose from **55.4 s** at fixed 1 to **78.0 s** at fixed 4
+  and **77.5 s** adaptively. Parallel execution completed the queue sooner
+  while each repair experienced greater endpoint and host contention.
+- Mean LLM time to first token increased from **675 ms** at fixed 1 to **916
+  ms** at fixed 4; adaptive execution averaged **871 ms**.
+- Docker admission remained negligible: adaptive `sync:container` p95 was
+  **0.25–0.34 ms**. The scheduler itself had roughly **0.2 ms p50** tick
+  latency and about **2.8 s total measured overhead** per run.
+- Adaptive runs averaged **3.41 active teams**. Across three repetitions the
+  controller recorded **13 scale-ups and 3 scale-downs**, including reductions
+  after task-latency spikes, while preserving a 100% repair rate.
 
-Raw profiler output is preserved in:
+![Adaptive concurrency and resource timeline](artifacts/adaptive_timeline.png)
 
-- [`artifacts/sequential/profile_summary.md`](artifacts/sequential/profile_summary.md)
-- [`artifacts/sequential_2/profile_summary.md`](artifacts/sequential_2/profile_summary.md)
-- [`artifacts/parallel/profile_summary.md`](artifacts/parallel/profile_summary.md)
-- [`artifacts/parallel_2/profile_summary.md`](artifacts/parallel_2/profile_summary.md)
+The representative timeline shows the controller ramping from one to four
+teams, backing off when pressure criteria fired, and refilling available
+capacity. Complete result, scheduler, and profile summaries for all twelve runs
+are under [`artifacts/scaling`](artifacts/scaling).
 
 ## Screenshots
 
-The comparison figure above is generated directly from `agprof`'s
-`summary.json` files. Representative raw Perfetto traces from the first run of
-each mode are retained locally as `artifacts/*/trace.json`; they are omitted
-from Git because they total approximately 10 MB and can be attached to a GitHub
-release.
+Both figures are generated directly from `agprof` summaries and
+`scheduler_events.jsonl`. Raw Perfetto traces are omitted from Git because of
+their size; the compact machine-readable summaries needed to reproduce the
+figures are included.
 
 ## Limitations
 
@@ -117,11 +134,13 @@ release.
   affect repeated measurements.
 - The vLLM endpoint is remote and shared.
 - QuixBugs programs are intentionally small and mostly single-line defects.
-- Six tasks are enough for a tryout demonstration, not a statistically robust
-  model-quality evaluation.
-- Agent trajectories were not identical across repetitions: model tool choices
-  produced 39–44 LLM calls per run. The experiment therefore measures complete
-  workflow behavior rather than a deterministic microbenchmark.
+- Twelve tasks and three repetitions produce wide confidence intervals and are
+  a systems demonstration, not a statistically robust model-quality study.
+- The policy uses live CPU/memory samples and completed-task latency; live LLM
+  TTFT remains available only when each request completes.
+- Agent trajectories were not identical across repetitions. The experiment
+  therefore measures complete workflow behavior rather than a deterministic
+  microbenchmark.
 
 ## Reproduction
 

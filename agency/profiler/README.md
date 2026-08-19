@@ -29,7 +29,7 @@ included in Agency's sandbox image does not satisfy this requirement.
 ```python
 from agency import agprof
 
-with agprof.session(run_dir / "tb_trace"):   # owns the torch.profiler lifecycle
+with agprof.session(run_dir / "tb_trace"):  # owns the torch.profiler lifecycle
     team.run()
 ```
 
@@ -133,6 +133,22 @@ If profiling stops while background work is live, open spans are listed under
 boundary; they are not misreported as completed latency samples.
 `agprof.summary_metrics()` returns a copy of the JSON document for the most
 recently completed session, including sessions started with `out_dir=None`.
+
+Closed-loop schedulers can read the latest workload pressure while a session is
+active:
+
+```python
+snapshot = agprof.live_metrics()
+if snapshot is not None:
+    print(snapshot.cpu_capacity_percent, snapshot.memory_percent)
+```
+
+`live_metrics()` is thread-safe and returns an immutable snapshot after at
+least two fresh resource samples exist. `cpu_core_percent` retains the summary
+convention where one fully used core is 100%; `cpu_capacity_percent` normalizes
+that value to the cgroup's available CPU capacity. Memory percentage uses the
+cgroup limit when present and host memory otherwise. The call returns `None`
+when profiling is inactive, samples are stale, or no rate can yet be computed.
 
 Custom app-level phases use the same public API:
 

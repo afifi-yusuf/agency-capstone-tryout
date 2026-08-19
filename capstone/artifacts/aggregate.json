@@ -1,76 +1,262 @@
 {
   "runs": {
-    "Sequential": [
+    "Fixed 1": [
       {
-        "duration_s": 409.654669,
-        "throughput": 0.029293,
-        "task_mean_s": 45.78638777283322,
+        "duration_s": 706.662772,
+        "throughput": 0.017061365948922467,
+        "task_mean_s": 55.24417397233341,
         "repair_rate": 1.0,
-        "cpu_average_percent": 41.007,
-        "memory_peak_mb": 505.438,
-        "ttft_ms": 667.193,
-        "llm_wait_s": 188.829227
+        "cpu_average_percent": 15.522,
+        "memory_peak_mb": 530.016,
+        "ttft_ms": 680.846,
+        "llm_wait_s": 493.569983,
+        "average_concurrency": 0.9984962406015038,
+        "peak_concurrency": 1
       },
       {
-        "duration_s": 428.47733,
-        "throughput": 0.028006,
-        "task_mean_s": 48.876271298166635,
+        "duration_s": 657.274993,
+        "throughput": 0.018310516969647653,
+        "task_mean_s": 51.162539058583285,
         "repair_rate": 1.0,
-        "cpu_average_percent": 40.282,
-        "memory_peak_mb": 518.363,
-        "ttft_ms": 651.768,
-        "llm_wait_s": 204.42157500000002
+        "cpu_average_percent": 16.048,
+        "memory_peak_mb": 589.203,
+        "ttft_ms": 647.467,
+        "llm_wait_s": 447.784216,
+        "average_concurrency": 0.9983818770226537,
+        "peak_concurrency": 1
+      },
+      {
+        "duration_s": 761.6705770000001,
+        "throughput": 0.01582083075301481,
+        "task_mean_s": 59.87996078558316,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 14.443,
+        "memory_peak_mb": 539.82,
+        "ttft_ms": 695.348,
+        "llm_wait_s": 551.6519179999999,
+        "average_concurrency": 0.9986111111111111,
+        "peak_concurrency": 1
       }
     ],
-    "Parallel (2)": [
+    "Fixed 2": [
       {
-        "duration_s": 323.83695400000005,
-        "throughput": 0.037056,
-        "task_mean_s": 55.531556674166495,
+        "duration_s": 424.145413,
+        "throughput": 0.028476242376927266,
+        "task_mean_s": 61.03293833399979,
         "repair_rate": 1.0,
-        "cpu_average_percent": 52.972,
-        "memory_peak_mb": 539.699,
-        "ttft_ms": 750.494,
-        "llm_wait_s": 234.305453
+        "cpu_average_percent": 31.804,
+        "memory_peak_mb": 597.875,
+        "ttft_ms": 735.539,
+        "llm_wait_s": 509.93177000000003,
+        "average_concurrency": 1.9012987012987013,
+        "peak_concurrency": 2
       },
       {
-        "duration_s": 309.57067700000005,
-        "throughput": 0.038763,
-        "task_mean_s": 54.161107440666605,
+        "duration_s": 413.600659,
+        "throughput": 0.029229508688971836,
+        "task_mean_s": 58.608423683833585,
         "repair_rate": 1.0,
-        "cpu_average_percent": 55.271,
-        "memory_peak_mb": 523.324,
-        "ttft_ms": 741.397,
-        "llm_wait_s": 227.008966
+        "cpu_average_percent": 26.332,
+        "memory_peak_mb": 551.711,
+        "ttft_ms": 745.919,
+        "llm_wait_s": 521.161963,
+        "average_concurrency": 1.8897849462365592,
+        "peak_concurrency": 2
+      },
+      {
+        "duration_s": 412.44624300000004,
+        "throughput": 0.02933715934850768,
+        "task_mean_s": 58.83832181008332,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 26.476,
+        "memory_peak_mb": 579.25,
+        "ttft_ms": 752.809,
+        "llm_wait_s": 517.1447469999999,
+        "average_concurrency": 1.8951612903225807,
+        "peak_concurrency": 2
+      }
+    ],
+    "Fixed 4": [
+      {
+        "duration_s": 355.48064500000004,
+        "throughput": 0.034160821566721664,
+        "task_mean_s": 92.45329559466761,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 32.611,
+        "memory_peak_mb": 833.73,
+        "ttft_ms": 981.04,
+        "llm_wait_s": 739.783176,
+        "average_concurrency": 3.5127388535031847,
+        "peak_concurrency": 4
+      },
+      {
+        "duration_s": 291.055501,
+        "throughput": 0.04171298742623772,
+        "task_mean_s": 72.44456063891691,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 38.397,
+        "memory_peak_mb": 654.238,
+        "ttft_ms": 830.045,
+        "llm_wait_s": 629.635635,
+        "average_concurrency": 3.444,
+        "peak_concurrency": 4
+      },
+      {
+        "duration_s": 267.88180900000003,
+        "throughput": 0.045318783718213074,
+        "task_mean_s": 69.06409850116627,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 42.031,
+        "memory_peak_mb": 641.0,
+        "ttft_ms": 937.963,
+        "llm_wait_s": 550.7343860000001,
+        "average_concurrency": 3.6211453744493394,
+        "peak_concurrency": 4
+      }
+    ],
+    "Adaptive 1\u20134": [
+      {
+        "duration_s": 288.10229499999997,
+        "throughput": 0.04218197296266703,
+        "task_mean_s": 72.41890812449917,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 38.801,
+        "memory_peak_mb": 643.156,
+        "ttft_ms": 861.945,
+        "llm_wait_s": 627.5829329999999,
+        "average_concurrency": 3.5040650406504064,
+        "peak_concurrency": 4
+      },
+      {
+        "duration_s": 299.360524,
+        "throughput": 0.040516170227171903,
+        "task_mean_s": 74.92327101650153,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 38.006,
+        "memory_peak_mb": 622.336,
+        "ttft_ms": 843.593,
+        "llm_wait_s": 631.992837,
+        "average_concurrency": 3.453488372093023,
+        "peak_concurrency": 4
+      },
+      {
+        "duration_s": 351.746788,
+        "throughput": 0.03445266904547327,
+        "task_mean_s": 85.03703450683315,
+        "repair_rate": 1.0,
+        "cpu_average_percent": 32.716,
+        "memory_peak_mb": 639.008,
+        "ttft_ms": 906.983,
+        "llm_wait_s": 786.422807,
+        "average_concurrency": 3.2636655948553055,
+        "peak_concurrency": 4
       }
     ]
   },
   "means": {
-    "Sequential": {
-      "duration_s": 419.0659995,
-      "throughput": 0.0286495,
-      "task_mean_s": 47.33132953549993,
+    "Fixed 1": {
+      "duration_s": 708.536114,
+      "throughput": 0.01706423789052831,
+      "task_mean_s": 55.42889127216662,
       "repair_rate": 1.0,
-      "cpu_average_percent": 40.644499999999994,
-      "memory_peak_mb": 511.9005,
-      "ttft_ms": 659.4805,
-      "llm_wait_s": 196.625401
+      "cpu_average_percent": 15.337666666666665,
+      "memory_peak_mb": 553.013,
+      "ttft_ms": 674.5536666666667,
+      "llm_wait_s": 497.66870566666665,
+      "average_concurrency": 0.9984964095784229,
+      "peak_concurrency": 1
     },
-    "Parallel (2)": {
-      "duration_s": 316.7038155,
-      "throughput": 0.0379095,
-      "task_mean_s": 54.84633205741655,
+    "Fixed 2": {
+      "duration_s": 416.73077166666667,
+      "throughput": 0.029014303471468928,
+      "task_mean_s": 59.493227942638896,
       "repair_rate": 1.0,
-      "cpu_average_percent": 54.1215,
-      "memory_peak_mb": 531.5115,
-      "ttft_ms": 745.9455,
-      "llm_wait_s": 230.6572095
+      "cpu_average_percent": 28.204,
+      "memory_peak_mb": 576.2786666666667,
+      "ttft_ms": 744.7556666666667,
+      "llm_wait_s": 516.0794933333333,
+      "average_concurrency": 1.8954149792859472,
+      "peak_concurrency": 2
+    },
+    "Fixed 4": {
+      "duration_s": 304.805985,
+      "throughput": 0.04039753090372415,
+      "task_mean_s": 77.98731824491693,
+      "repair_rate": 1.0,
+      "cpu_average_percent": 37.67966666666666,
+      "memory_peak_mb": 709.6560000000001,
+      "ttft_ms": 916.3493333333333,
+      "llm_wait_s": 640.0510656666667,
+      "average_concurrency": 3.525961409317508,
+      "peak_concurrency": 4
+    },
+    "Adaptive 1\u20134": {
+      "duration_s": 313.069869,
+      "throughput": 0.03905027074510407,
+      "task_mean_s": 77.45973788261128,
+      "repair_rate": 1.0,
+      "cpu_average_percent": 36.507666666666665,
+      "memory_peak_mb": 634.8333333333334,
+      "ttft_ms": 870.8403333333333,
+      "llm_wait_s": 681.9995256666666,
+      "average_concurrency": 3.4070730025329117,
+      "peak_concurrency": 4
+    }
+  },
+  "confidence_95": {
+    "Fixed 1": {
+      "duration_s": 129.73958993283313,
+      "throughput": 0.003092617470100272,
+      "task_mean_s": 10.835802363058631,
+      "repair_rate": 0.0,
+      "cpu_average_percent": 2.032744871624435,
+      "memory_peak_mb": 78.80940599928051,
+      "ttft_ms": 60.997593051892444,
+      "llm_wait_s": 129.32226123567884,
+      "average_concurrency": 0.0002847477343876044,
+      "peak_concurrency": 0.0
+    },
+    "Fixed 2": {
+      "duration_s": 16.016921412042365,
+      "throughput": 0.001165335957564834,
+      "task_mean_s": 3.324973099246413,
+      "repair_rate": 0.0,
+      "cpu_average_percent": 7.747465164681411,
+      "memory_peak_mb": 57.69873966314744,
+      "ttft_ms": 21.59777868946581,
+      "llm_wait_s": 14.13681932719773,
+      "average_concurrency": 0.014312441994540577,
+      "peak_concurrency": 0.0
+    },
+    "Fixed 4": {
+      "duration_s": 112.76257257419482,
+      "throughput": 0.014146086429030763,
+      "task_mean_s": 31.40553883213041,
+      "repair_rate": 0.0,
+      "cpu_average_percent": 11.802574270007955,
+      "memory_peak_mb": 267.45120185225556,
+      "ttft_ms": 193.23992335034166,
+      "llm_wait_s": 235.89732736735505,
+      "average_concurrency": 0.22187585328870593,
+      "peak_concurrency": 0.0
+    },
+    "Adaptive 1\u20134": {
+      "duration_s": 84.38031876356095,
+      "throughput": 0.010105847117390241,
+      "task_mean_s": 16.59670437086246,
+      "repair_rate": 0.0,
+      "cpu_average_percent": 8.21732495916115,
+      "memory_peak_mb": 27.37724714382704,
+      "ttft_ms": 81.03354644455155,
+      "llm_wait_s": 224.73346057693956,
+      "average_concurrency": 0.314872234815398,
+      "peak_concurrency": 0.0
     }
   },
   "comparison": {
-    "wall_time_reduction_percent": 24.426267967845472,
-    "speedup": 1.3232110855323749,
-    "throughput_increase_percent": 32.32168100664932,
-    "task_latency_increase_percent": 15.877438042977715
+    "adaptive_vs_sequential_speedup": 2.263188457781608,
+    "adaptive_vs_sequential_wall_reduction_percent": 55.81455019524947,
+    "fastest_fixed": "Fixed 4",
+    "adaptive_vs_fastest_fixed_speedup": 0.973603706973155
   }
 }
