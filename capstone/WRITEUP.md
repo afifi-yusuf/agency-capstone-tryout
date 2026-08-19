@@ -118,8 +118,9 @@ The profiles explain the throughput/latency tradeoff:
 
 The representative timeline shows the controller ramping from one to four
 teams, backing off when pressure criteria fired, and refilling available
-capacity. Complete result, scheduler, and profile summaries for all twelve runs
-are under [`artifacts/scaling`](artifacts/scaling).
+capacity. Complete task results and scheduler logs plus compact profile
+summaries for all twelve runs are under
+[`artifacts/scaling`](artifacts/scaling).
 
 ## Screenshots
 
