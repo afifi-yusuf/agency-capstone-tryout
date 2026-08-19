@@ -23,7 +23,11 @@ To prevent answer leakage, each task receives a fresh checkout without:
 - Git history
 
 The harness requires every original program to fail its targeted pytest case
-before allowing the agent to run.
+before allowing the agent to run. The publication harness also disables
+container networking, restores pristine benchmark inputs before verification,
+and rejects any change outside the target program. A post-run audit of the
+recorded trajectories and workspaces confirmed that the reported runs used only
+local read/edit/pytest operations and did not alter protected files.
 
 ## Workflow
 

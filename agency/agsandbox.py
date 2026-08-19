@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 # based backend, not to sandboxing in general.
 class _AgSandboxFields:
     base_image = StaticConfigParam("agSandbox", default="agency-sandbox:latest")
+    network_mode = StaticConfigParam("agSandbox", default=None)
 
 
 class agSandboxConfig(_AgConfigViewBase):
@@ -52,6 +53,10 @@ class agSandboxConfig(_AgConfigViewBase):
 
     def set_base_image(self, image: str) -> "agSandboxConfig":
         return self.update(base_image=image)
+
+    def set_network_mode(self, mode: "str | None") -> "agSandboxConfig":
+        """Set the container network mode (for example, ``"none"``)."""
+        return self.update(network_mode=mode)
 
     @property
     def mounts(self) -> dict[str, tuple[str, str, str]]:

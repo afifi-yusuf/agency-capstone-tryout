@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ from pathlib import Path
 
 from agency import agent, agdata, agteam
 from agency.agconfig import agConfig
+from agency.agllm import agLLMConfig
 from agency.agllm_backends import agVLLMBackendConfig
 from agency.agsandbox import agSandboxConfig
 from agency.common_skills import agbuild, agplan
@@ -22,6 +24,8 @@ QUIXBUGS_URL = "https://github.com/jkoppel/QuixBugs.git"
 DEFAULT_MANIFEST = Path(__file__).with_name("tasks.json")
 MAX_TEST_OUTPUT = 20_000
 PRIVATE_ENV_FILE = Path.home() / ".config" / "agency-capstone" / "env"
+SAFE_TASK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+IGNORED_WORKSPACE_PARTS = {".pytest_cache", "__pycache__"}
 
 
 @dataclass(frozen=True)
@@ -131,6 +135,8 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> tuple[str, list[RepairTask]]
     if len({task.name for task in tasks}) != len(tasks):
         raise ValueError("task names must be unique")
     for task in tasks:
+        if not SAFE_TASK_NAME.fullmatch(task.name):
+            raise ValueError(f"task name must be a safe path component: {task.name!r}")
         for relative in (task.program, task.test):
             candidate = Path(relative)
             if candidate.is_absolute() or ".." in candidate.parts:
@@ -177,6 +183,50 @@ def prepare_workspace(source: Path, destination: Path, task: RepairTask) -> Path
     return destination
 
 
+def snapshot_protected_files(workspace: Path, task: RepairTask) -> dict[str, bytes]:
+    """Snapshot every benchmark file except the one program the agent may edit."""
+    snapshot: dict[str, bytes] = {}
+    for path in workspace.rglob("*"):
+        relative = path.relative_to(workspace)
+        if (
+            relative.as_posix() == task.program
+            or any(part in IGNORED_WORKSPACE_PARTS for part in relative.parts)
+            or path.suffix == ".pyc"
+        ):
+            continue
+        if path.is_symlink():
+            snapshot[relative.as_posix()] = b"SYMLINK\0" + os.readlink(path).encode()
+        elif path.is_file():
+            snapshot[relative.as_posix()] = path.read_bytes()
+    return snapshot
+
+
+def restore_protected_files(
+    workspace: Path, task: RepairTask, original: dict[str, bytes]
+) -> list[str]:
+    """Restore immutable benchmark inputs and report every attempted modification."""
+    current = snapshot_protected_files(workspace, task)
+    changed = sorted(
+        path for path in set(original) | set(current) if original.get(path) != current.get(path)
+    )
+    for relative in set(current) - set(original):
+        path = workspace / relative
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+    for relative, content in original.items():
+        if current.get(relative) == content:
+            continue
+        path = workspace / relative
+        if path.is_symlink():
+            path.unlink()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if content.startswith(b"SYMLINK\0"):
+            path.symlink_to(content.removeprefix(b"SYMLINK\0").decode())
+        else:
+            path.write_bytes(content)
+    return changed
+
+
 def run_test(workspace: Path, task: RepairTask, timeout: int = 120) -> dict:
     started = time.perf_counter()
     try:
@@ -215,9 +265,15 @@ def make_config(workspace: Path) -> agConfig:
     sandbox = (
         agSandboxConfig()
         .set_base_image(os.environ.get("AGENCY_CAPSTONE_IMAGE", "agency-capstone:latest"))
+        .set_network_mode("none")
         .add_mount("quixbugs", workspace, "/workspace", "rw")
     )
-    return agConfig(llm, sandbox)
+    llm_runtime = agLLMConfig(
+        max_retries=3,
+        idle_timeout=180.0,
+        stream_timeout=300.0,
+    )
+    return agConfig(llm, llm_runtime, sandbox)
 
 
 class RepairTeam(agteam):
@@ -244,9 +300,9 @@ class RepairTeam(agteam):
             name="repair_bug",
             system_prompt=(
                 "Implement a minimal repair for the diagnosed QuixBugs defect in /workspace. "
-                "Modify only the target Python program unless a test-only change is absolutely "
-                "necessary. Run the supplied pytest command and do not weaken, skip, or delete "
-                "tests. Do not search for a reference implementation."
+                "Modify only the target Python program. Run the supplied pytest command and do "
+                "not weaken, skip, delete, or otherwise alter tests or harness files. The "
+                "sandbox has no network access; do not search for a reference implementation."
             ),
             input_schema=agdata(
                 task_name=str,
@@ -261,8 +317,10 @@ class RepairTeam(agteam):
     def run(self) -> agdata:
         task: RepairTask = self.task
         workspace = Path(self.workspace)
-        original = (workspace / task.program).read_text()
-        started = time.perf_counter()
+        program_path = workspace / task.program
+        original = program_path.read_text()
+        protected = snapshot_protected_files(workspace, task)
+        started = self.submitted_at
         plan_text = ""
         build_status = "not_started"
         build_summary = ""
@@ -278,6 +336,7 @@ class RepairTeam(agteam):
                         test_path=f"/workspace/{task.test}",
                         baseline_failure=self.baseline["output"],
                     ),
+                    max_steps=16,
                 )
                 plan_text = diagnosis.plan
 
@@ -290,16 +349,25 @@ class RepairTeam(agteam):
                         test_command=f"cd /workspace && {task.test_command}",
                         diagnosis=plan_text,
                     ),
+                    max_steps=16,
                 )
                 build_status = built.status
                 build_summary = built.summary
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
 
+        protected_changes = restore_protected_files(workspace, task, protected)
+        if protected_changes:
+            violation = "agent modified protected files: " + ", ".join(protected_changes)
+            error = f"{error}; {violation}".lstrip("; ")
+
         with agprof.span(f"capstone:verify:{task.name}"):
             verification = run_test(workspace, task)
 
-        modified = (workspace / task.program).read_text()
+        program_valid = program_path.is_file() and not program_path.is_symlink()
+        modified = program_path.read_text() if program_valid else ""
+        if not program_valid:
+            error = f"{error}; target program missing or not a regular file".lstrip("; ")
         patch = "".join(
             difflib.unified_diff(
                 original.splitlines(keepends=True),
@@ -311,13 +379,16 @@ class RepairTeam(agteam):
         return agdata(
             task=task.name,
             category=task.category,
-            success=bool(verification["passed"] and patch),
+            success=bool(
+                verification["passed"] and patch and program_valid and not protected_changes
+            ),
             baseline=self.baseline,
             verification=verification,
             plan=plan_text,
             build_status=build_status,
             build_summary=build_summary,
             patch=patch,
+            protected_changes=protected_changes,
             error=error,
             duration_s=time.perf_counter() - started,
         )

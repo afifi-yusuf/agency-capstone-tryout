@@ -7,8 +7,11 @@ from capstone.mini_swe import (
     RepairTask,
     load_manifest,
     load_private_environment,
+    make_config,
     prepare_workspace,
+    restore_protected_files,
     run_test,
+    snapshot_protected_files,
 )
 from capstone.run_benchmark import aggregate_results, batches
 
@@ -40,6 +43,28 @@ def test_manifest_rejects_unsafe_paths(tmp_path):
     )
 
     with pytest.raises(ValueError, match="unsafe path"):
+        load_manifest(manifest)
+
+
+def test_manifest_rejects_unsafe_task_name(tmp_path):
+    manifest = tmp_path / "tasks.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "revision": "a" * 40,
+                "tasks": [
+                    {
+                        "name": "../../escape",
+                        "program": "answer.py",
+                        "test": "test_answer.py",
+                        "category": "invalid",
+                    }
+                ],
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="safe path component"):
         load_manifest(manifest)
 
 
@@ -76,6 +101,37 @@ def test_prepare_workspace_removes_reference_implementations(tmp_path):
     assert not (destination / "correct_python_programs").exists()
     assert not (destination / "java_programs").exists()
     assert not (destination / ".git").exists()
+
+
+def test_protected_files_are_restored_but_target_patch_is_preserved(tmp_path):
+    programs = tmp_path / "python_programs"
+    tests = tmp_path / "python_testcases"
+    programs.mkdir()
+    tests.mkdir()
+    target = programs / "gcd.py"
+    protected_test = tests / "test_gcd.py"
+    target.write_text("BUG = True\n")
+    protected_test.write_text("def test_gcd(): pass\n")
+    task = RepairTask("gcd", "python_programs/gcd.py", "python_testcases/test_gcd.py", "math")
+    protected = snapshot_protected_files(tmp_path, task)
+
+    target.write_text("BUG = False\n")
+    protected_test.write_text("def test_gcd(): assert True\n")
+    (tmp_path / "conftest.py").write_text("pytest_plugins = []\n")
+    changed = restore_protected_files(tmp_path, task, protected)
+
+    assert changed == ["conftest.py", "python_testcases/test_gcd.py"]
+    assert target.read_text() == "BUG = False\n"
+    assert protected_test.read_text() == "def test_gcd(): pass\n"
+    assert not (tmp_path / "conftest.py").exists()
+
+
+def test_capstone_config_disables_network_and_bounds_llm_wait(tmp_path):
+    cfg = make_config(tmp_path)
+
+    assert cfg.get("agSandbox", "network_mode") == "none"
+    assert cfg.get("agllm", "max_retries") == 3
+    assert cfg.get("agllm", "idle_timeout") == 180.0
 
 
 def test_run_test_reports_success_and_failure(tmp_path):

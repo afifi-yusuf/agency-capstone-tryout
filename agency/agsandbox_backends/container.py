@@ -911,6 +911,8 @@ class _ContainerBackendBase(agsandbox_backend):
             cgroup_parent = agprof.container_cgroup_parent()
             if cgroup_parent is not None and self._runtime == "docker":
                 cgroup_flags = [f"--cgroup-parent={cgroup_parent}"]
+            network_mode = self._agconfig.get_static("agSandbox", "network_mode", None)
+            network_flags = [f"--network={network_mode}"] if network_mode else []
             self._acquire_runtime_slot()
             try:
                 if self._checkpoint_image is not None:
@@ -921,6 +923,7 @@ class _ContainerBackendBase(agsandbox_backend):
                         [self._runtime, "run", "-d", "--init", "--name", name]
                         + ["--label", f"{_AGENCY_OWNER_PID_LABEL}={self._owner_pid}"]
                         + cgroup_flags
+                        + network_flags
                         + gpu_flags
                         + self._vol_flags
                         + [image, "tail", "-f", "/dev/null"]
@@ -940,6 +943,7 @@ class _ContainerBackendBase(agsandbox_backend):
                         + ["--label", f"{_AGENCY_OWNER_PID_LABEL}={self._owner_pid}"]
                         + limit_flags
                         + cgroup_flags
+                        + network_flags
                         + gpu_flags
                         + self._vol_flags
                         + [image, "tail", "-f", "/dev/null"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -84,11 +85,13 @@ def write_artifacts(run_dir: Path, results: list[dict], summary: dict) -> None:
 
 
 def _run_task(task: RepairTask, workspace: Path, baseline: dict) -> tuple[RepairTeam, agdata]:
+    submitted_at = time.perf_counter()
     team = RepairTeam(
         agconfig=make_config(workspace),
         task=task,
         workspace=workspace,
         baseline=baseline,
+        submitted_at=submitted_at,
         name=f"repair_{task.name}",
     )
     return team, team.run()
@@ -101,13 +104,17 @@ def run_benchmark(
     mode: str,
     parallelism: int,
 ) -> tuple[list[dict], dict]:
+    benchmark_started = time.perf_counter()
     prepared: list[tuple[RepairTask, Path, dict]] = []
     for task in tasks:
         with agprof.span(f"capstone:prepare:{task.name}"):
             workspace = prepare_workspace(source, run_dir / "workspaces" / task.name, task)
             baseline = run_test(workspace, task)
-        if baseline["passed"]:
-            raise RuntimeError(f"benchmark task {task.name!r} unexpectedly passes before repair")
+        if baseline["returncode"] != 1:
+            raise RuntimeError(
+                f"benchmark task {task.name!r} baseline was not an expected test failure "
+                f"(pytest return code {baseline['returncode']}):\n{baseline['output']}"
+            )
         prepared.append((task, workspace, baseline))
 
     results: list[dict] = []
@@ -121,8 +128,12 @@ def run_benchmark(
             pending.append(result)
         agsync(teams)
         results.extend(item.to_dict() for item in agdata.wait_all(pending))
+        partial = aggregate_results(results, mode=mode, parallelism=batch_size)
+        partial["benchmark_wall_s"] = time.perf_counter() - benchmark_started
+        write_artifacts(run_dir, results, partial)
 
     summary = aggregate_results(results, mode=mode, parallelism=batch_size)
+    summary["benchmark_wall_s"] = time.perf_counter() - benchmark_started
     write_artifacts(run_dir, results, summary)
     return results, summary
 

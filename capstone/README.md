@@ -88,15 +88,15 @@ Run from a clean shell for each profile. The profiler re-executes the command in
 a dedicated systemd cgroup.
 
 ```bash
-AGENCY_PROFILE=1 \
-AGENCY_PROFILE_SCOPE=process \
+timeout --signal=TERM 20m env \
+AGENCY_PROFILE=1 AGENCY_PROFILE_SCOPE=process \
 AGENCY_PROFILE_DIR=runs/profile_sequential \
 uv run python -m capstone.run_benchmark \
   --mode sequential \
   --run-dir runs/results_sequential
 
-AGENCY_PROFILE=1 \
-AGENCY_PROFILE_SCOPE=process \
+timeout --signal=TERM 20m env \
+AGENCY_PROFILE=1 AGENCY_PROFILE_SCOPE=process \
 AGENCY_PROFILE_DIR=runs/profile_parallel \
 uv run python -m capstone.run_benchmark \
   --mode parallel \

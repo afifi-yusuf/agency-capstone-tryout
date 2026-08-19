@@ -128,6 +128,17 @@ class TestOwnerPidLabel:
         run_cmd = self._captured_run_cmd(sb)
         assert self._label_value(run_cmd) == str(sentinel_pid)
 
+    def test_network_mode_is_forwarded_to_docker_run(self):
+        from agency.agconfig import agConfig
+        from agency.agsandbox import agSandboxConfig
+
+        sandbox_config = agSandboxConfig().set_network_mode("none")
+        sb = _make_sandbox(agconfig=agConfig(sandbox_config))
+
+        run_cmd = self._captured_run_cmd(sb)
+
+        assert "--network=none" in run_cmd
+
     @docker
     def test_real_sandboxed_tool_call_labels_container_with_main_process_pid(self):
         """End-to-end, no mocks: a real run_in_subprocess=True tool call (the
