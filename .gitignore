@@ -8,3 +8,4 @@ runs/
 .env
 capstone/.env
 capstone/artifacts/*/trace.json
+capstone/artifacts/*/profile_summary.json
